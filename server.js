@@ -1,16 +1,29 @@
 const express = require('express');
 const app = express();
-const PORT = 3000;
+const PORT = 5000;
+const dotenv = require('dotenv');
+dotenv.config()
 
-// Middleware (opsional)
+
 app.use(express.json());
 
-// Route sederhana
+const db = require('./src/config/db')
+
+// connection test
+db.raw('SELECT NOW()')
+    .then((result) => {
+        console.log('Database connected: ', result.rows || result);
+    })
+    .catch((err) => {
+        console.error('Error connecting to database: ', err);
+    });
+
+// routes
 app.get('/', (req, res) => {
   res.send('Hello, Bolobudur Backend!');
 });
 
-// Jalankan server
+// running server
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
