@@ -4,8 +4,11 @@ const PORT = 5000;
 const dotenv = require('dotenv');
 dotenv.config()
 
+const nodeRoutes = require('./src/routes/nodeRoute');
 
 app.use(express.json());
+
+app.use('/api/node', nodeRoutes);
 
 const db = require('./src/config/db')
 
