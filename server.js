@@ -5,10 +5,13 @@ const dotenv = require('dotenv');
 dotenv.config()
 
 const nodeRoutes = require('./src/routes/nodeRoute');
+const edgeRoutes = require('./src/routes/edgeRoute');
 
 app.use(express.json());
 
 app.use('/api/node', nodeRoutes);
+app.use('/api/edge', edgeRoutes)
+
 
 const db = require('./src/config/db')
 
