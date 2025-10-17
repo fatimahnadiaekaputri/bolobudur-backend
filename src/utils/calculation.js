@@ -14,7 +14,11 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   
     return R * c; // hasil meter
-  }
-  
-  module.exports = { haversineDistance };
+}
+
+function diagonalDistance(baseDistance, height) {
+  return Math.sqrt(baseDistance ** 2 + height ** 2);
+}
+
+module.exports = { haversineDistance, diagonalDistance };
   
