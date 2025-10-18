@@ -40,4 +40,42 @@ const createEdge = async (from_node, to_node, type, height) => {
   return newEdge;
 };
 
-module.exports = { createEdge };
+async function getAllEdgesAsGeoJSON() {
+  // Ambil data edge + konversi geometry ke GeoJSON
+  const result = await db.raw(`
+    SELECT 
+      e.edge_id,
+      e.type,
+      n1.floor AS from_floor,
+      n2.floor AS to_floor,
+      ST_AsGeoJSON(e.geom) AS geometry
+    FROM edge e
+    JOIN node n1 ON e.from_node = n1.node_id
+    JOIN node n2 ON e.to_node = n2.node_id
+  `);
+
+  // Raw query dari Knex+Postgres hasilnya ada di result.rows
+  const edges = result.rows;
+
+  // Konversi ke format GeoJSON FeatureCollection
+  const features = edges.map(edge => ({
+    type: "Feature",
+    properties: {
+      // Kalau typenya 'stair', name jadi 'stair'
+      name: edge.type === 'stair' ? 'stair' : `Lantai ${edge.from_floor}`,
+      floor: edge.type === 'stair' ? `${edge.from_floor} → ${edge.to_floor}` : edge.from_floor
+    },
+    geometry: JSON.parse(edge.geometry)
+  }));
+
+  return {
+    type: "FeatureCollection",
+    features
+  };
+}
+
+async function getAllEdges() {
+  return await db('edge').select('from_node', 'to_node', 'distance')
+}
+
+module.exports = { createEdge, getAllEdgesAsGeoJSON, getAllEdges };

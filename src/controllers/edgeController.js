@@ -1,5 +1,5 @@
 // controllers/edgeController.js
-const { createEdge } = require('../models/edgeModel');
+const { createEdge, getAllEdgesAsGeoJSON } = require('../models/edgeModel');
 
 const addEdge = async (req, res) => {
   try {
@@ -28,4 +28,14 @@ const addEdge = async (req, res) => {
   }
 };
 
-module.exports = { addEdge };
+const getEdgesGeoJSON = async (req, res) => {
+  try {
+    const geoJSON = await getAllEdgesAsGeoJSON();
+    res.status(200).json(geoJSON);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error generating GeoJSON', error: error.message });
+  }
+};
+
+module.exports = { addEdge, getEdgesGeoJSON };

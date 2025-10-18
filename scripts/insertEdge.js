@@ -37,7 +37,7 @@ async function insertEdges() {
 
 async function insertStairEdges() {
   const stairEdges = [
-    { from_node: 1031, to_node: 1071, height: 3.4 }, // lantai 1 ke lantai 2 timur
+    { from_node: 1031, to_node: 1071, height: 3.4 }, // lantai 1 ke lantai 2 utara
     { from_node: 1071, to_node: 1111, height: 3.4 }, // lantai 2 ke lantai 3 
     { from_node: 1111, to_node: 1139, height: 3.4 }, // lantai 3 ke lantai 4 
     { from_node: 1139, to_node: 1163, height: 3.4 }, // lantai 4 ke lantai 5 
