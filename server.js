@@ -7,12 +7,14 @@ dotenv.config()
 const nodeRoutes = require('./src/routes/nodeRoute');
 const edgeRoutes = require('./src/routes/edgeRoute');
 const pathRoutes = require('./src/routes/pathRoute');
+const poiRoutes = require('./src/routes/poiRoute');
 
 app.use(express.json());
 
 app.use('/api/node', nodeRoutes);
 app.use('/api/edge', edgeRoutes);
 app.use('/api/path', pathRoutes);
+app.use('/api/poi', poiRoutes);
 
 
 const db = require('./src/config/db')
