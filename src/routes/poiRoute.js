@@ -4,7 +4,7 @@ const poiController = require('../controllers/poiController');
 const verifyApiKey = require('../middleware/verifyApiKey');
 
 router.post('/', verifyApiKey, poiController.createPoi);
-router.get('/', verifyApiKey, poiController.getAllPois);
+router.get('/', poiController.getAllPois);
 
 module.exports = router;
 

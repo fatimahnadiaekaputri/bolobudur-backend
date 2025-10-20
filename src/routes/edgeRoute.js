@@ -5,6 +5,6 @@ const edgeController = require('../controllers/edgeController');
 const verifyApiKey = require('../middleware/verifyApiKey');
 
 router.post('/', verifyApiKey, edgeController.addEdge);
-router.get('/geojson', verifyApiKey, edgeController.getEdgesGeoJSON)
+router.get('/geojson', edgeController.getEdgesGeoJSON)
 
 module.exports = router;
