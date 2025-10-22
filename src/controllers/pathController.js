@@ -189,6 +189,19 @@ const shortestPath = async (req, res) => {
       // Tambahkan virtual edge awal dan akhir
       if (virtualFromEdge) edgeSegments.unshift(virtualFromEdge);
       if (virtualToEdge) edgeSegments.push(virtualToEdge);
+
+      const geoJson = {
+        type: "FeatureCollection",
+        features: edgeSegments.map(segment => ({
+          type: "Feature",
+          properties: {
+            from_node: segment.from_node,
+            to_node: segment.to_node,
+            distance: segment.distance
+          },
+          geometry: segment.geometry
+        }))
+      };
   
       res.json({
         success: true,
@@ -198,7 +211,7 @@ const shortestPath = async (req, res) => {
           (virtualFromEdge ? virtualFromEdge.distance : 0) +
           (virtualToEdge ? virtualToEdge.distance : 0),
         path_nodes: path,
-        geojson: edgeSegments
+        geojson: geoJson
       });
   
     } catch (err) {
