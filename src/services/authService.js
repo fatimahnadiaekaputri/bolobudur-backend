@@ -31,7 +31,7 @@ class AuthService {
     const token = generateToken({ id: user.uuid, email: user.email });
 
     // Hitung expiry
-    const expiresAt = dayjs().add(1, "day").toISOString();
+    const expiresAt = dayjs().add(30, "day").toISOString();
 
     // Simpan token ke tabel tokens
     await db("token").insert({
