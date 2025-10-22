@@ -19,7 +19,12 @@ module.exports = {
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false},
     },
-    pool: {min: 2, max: 10},
+    pool: {
+      min: 2, 
+      max: 10,
+      idleTimeoutMillis: 30000,
+      createTimeoutMillis: 10000,
+      acquireTimeoutMillis: 10000},
     migrations: {
       tableName: 'knex_migrations'
     }

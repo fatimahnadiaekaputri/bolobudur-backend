@@ -23,99 +23,69 @@ const shortestPath = async (req, res) => {
     const { from_lat, from_lon, to_lat, to_lon } = req.query;
 
     if (!from_lat || !from_lon || !to_lat || !to_lon) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing coordinates"
-      });
+      return res.status(400).json({ success: false, message: "Missing coordinates" });
     }
 
     const fromNode = await nodeModel.findNearestNode(parseFloat(from_lat), parseFloat(from_lon));
     const toNode = await nodeModel.findNearestNode(parseFloat(to_lat), parseFloat(to_lon));
 
+    // Validasi node
     if (!fromNode || !toNode || fromNode.distance > 50 || toNode.distance > 50) {
       return res.status(404).json({
         success: false,
-        message: "No nearby node found — check if coordinates are too far from the network"
+        message: "No nearby node found — coordinates too far from network"
       });
     }
 
     const edges = await edgeModel.getAllEdges();
 
-    // Build graph
+    // Bentuk graph dua arah
     const graph = {};
     edges.forEach(edge => {
       if (!graph[edge.from_node]) graph[edge.from_node] = [];
       if (!graph[edge.to_node]) graph[edge.to_node] = [];
-
       graph[edge.from_node].push({ node: edge.to_node, weight: edge.distance });
       graph[edge.to_node].push({ node: edge.from_node, weight: edge.distance });
     });
 
-    // --- virtual edge from start ---
-    const nearestEdgeFrom = await edgeModel.findNearestEdge(
-      parseFloat(from_lat),
-      parseFloat(from_lon),
-      fromNode.node_id
-    );
+    // virtual edge untuk titik awal ke nearest node
+    const virtualFromId = -1000;
+    const nearestNodeFromCoord = await nodeModel.getCoordinateById([fromNode.node_id]);
+    const fromNodeLat = nearestNodeFromCoord[0].latitude;
+    const fromNodeLon = nearestNodeFromCoord[0].longitude;
 
-    let virtualFromEdge = null;
-    let virtualFromId = -1000;
-    // store nearest point for later coordinate stitching
-    let virtualFromNearest = null;
+    graph[virtualFromId] = [{ node: fromNode.node_id, weight: fromNode.distance }];
+    if (!graph[fromNode.node_id]) graph[fromNode.node_id] = [];
+    graph[fromNode.node_id].push({ node: virtualFromId, weight: fromNode.distance });
 
-    if (nearestEdgeFrom) {
-      const {
-        from_node,
-        to_node,
-        nearest_lon,
-        nearest_lat,
-        dist_to_from,
-        dist_to_to
-      } = nearestEdgeFrom;
+    const virtualFromEdge = {
+      from_node: virtualFromId,
+      to_node: fromNode.node_id,
+      distance: fromNode.distance,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [parseFloat(from_lon), parseFloat(from_lat)],
+          [fromNodeLon, fromNodeLat]
+        ]
+      }
+    };
 
-      graph[virtualFromId] = [
-        { node: from_node, weight: dist_to_from },
-        { node: to_node, weight: dist_to_to }
-      ];
+    // virtual edge untuk ke nearest node titik tujuan
+    const { path: prePath } = dijkstra(graph, fromNode.node_id, toNode.node_id);
+    const coords = await nodeModel.getCoordinateById(prePath);
+    const lastNodeId = prePath[prePath.length - 1];
 
-      if (!graph[from_node]) graph[from_node] = [];
-      if (!graph[to_node]) graph[to_node] = [];
-
-      graph[from_node].push({ node: virtualFromId, weight: dist_to_from });
-      graph[to_node].push({ node: virtualFromId, weight: dist_to_to });
-
-      virtualFromEdge = {
-        from_node: virtualFromId,
-        to_node: from_node,
-        distance: dist_to_from,
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [parseFloat(from_lon), parseFloat(from_lat)], // user -> nearest point
-            [nearest_lon, nearest_lat]
-          ]
-        }
-      };
-
-      virtualFromNearest = {
-        nearest_lon,
-        nearest_lat,
-        attached_node: from_node // the real node this virtual edge attaches to
-      };
-    }
-
-    // --- virtual edge to destination ---
-    const nearestEdgeTo = await edgeModel.findNearestEdge(
+    const nearestEdgeToPOI = await edgeModel.findNearestEdge(
       parseFloat(to_lat),
       parseFloat(to_lon),
-      toNode.node_id
+      lastNodeId
     );
 
     let virtualToEdge = null;
-    let virtualToId = -9999;
-    let virtualToNearest = null;
+    const virtualToId = -9999;
 
-    if (nearestEdgeTo) {
+    if (nearestEdgeToPOI) {
       const {
         from_node,
         to_node,
@@ -123,124 +93,87 @@ const shortestPath = async (req, res) => {
         nearest_lat,
         dist_to_from,
         dist_to_to
-      } = nearestEdgeTo;
+      } = nearestEdgeToPOI;
 
       graph[virtualToId] = [
         { node: from_node, weight: dist_to_from },
         { node: to_node, weight: dist_to_to }
       ];
-
       if (!graph[from_node]) graph[from_node] = [];
       if (!graph[to_node]) graph[to_node] = [];
 
       graph[from_node].push({ node: virtualToId, weight: dist_to_from });
       graph[to_node].push({ node: virtualToId, weight: dist_to_to });
 
-      // note: attach virtualTo to the 'to_node' side for consistency with earlier code
       virtualToEdge = {
-        from_node: to_node,
+        from_node: lastNodeId,
         to_node: virtualToId,
-        distance: dist_to_to,
+        distance: Math.min(dist_to_from, dist_to_to),
         geometry: {
           type: "LineString",
           coordinates: [
-            [nearest_lon, nearest_lat],
-            [parseFloat(to_lon), parseFloat(to_lat)]
+            [
+              coords.find(c => c.node_id === lastNodeId).longitude,
+              coords.find(c => c.node_id === lastNodeId).latitude
+            ],
+            [nearest_lon, nearest_lat]
           ]
         }
       };
-
-      virtualToNearest = {
-        nearest_lon,
-        nearest_lat,
-        attached_node: to_node // the real node this virtual edge attaches to
-      };
     }
 
-    const startNodeId = virtualFromEdge ? virtualFromId : parseInt(fromNode.node_id);
-    const endNodeId = virtualToEdge ? virtualToId : parseInt(toNode.node_id);
+   
+    const { path, totalDistance } = dijkstra(graph, virtualFromId, virtualToId);
 
-    const { path, totalDistance } = dijkstra(graph, startNodeId, endNodeId);
-
-    if (!path || path.length < 2) {
-      return res.status(404).json({
-        success: false,
-        message: "No path found between points"
-      });
+    if (path.length < 2) {
+      return res.status(404).json({ success: false, message: "No path found" });
     }
 
-    const coords = await nodeModel.getCoordinateById(path); // array of { node_id, latitude, longitude }
-
-    // Build edgeSegments but stitch coordinates if adjacent to virtual edges
+    const fullCoords = await nodeModel.getCoordinateById(path);
     const edgeSegments = [];
+
     for (let i = 0; i < path.length - 1; i++) {
       const fromNodeId = path[i];
       const toNodeId = path[i + 1];
-
-      // find edge metadata (real edges only)
       const edgeData = edges.find(e =>
         (e.from_node === fromNodeId && e.to_node === toNodeId) ||
         (e.from_node === toNodeId && e.to_node === fromNodeId)
       );
 
-      const fromCoord = coords.find(c => parseInt(c.node_id) === fromNodeId);
-      const toCoord = coords.find(c => parseInt(c.node_id) === toNodeId);
+      const fromCoord = fullCoords.find(c => c.node_id === fromNodeId);
+      const toCoord = fullCoords.find(c => c.node_id === toNodeId);
 
-      // Skip if neither edgeData nor virtual adjacency match (but usually fine)
-      if (!edgeData || !fromCoord || !toCoord) {
-        // If this segment involves a virtual node directly (e.g., virtualFromId -> realNode),
-        // it will be handled by virtualFromEdge/virtualToEdge added later. Continue.
-        continue;
+      if (fromCoord && toCoord && edgeData) {
+        edgeSegments.push({
+          from_node: fromNodeId,
+          to_node: toNodeId,
+          distance: edgeData.distance,
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [fromCoord.longitude, fromCoord.latitude],
+              [toCoord.longitude, toCoord.latitude]
+            ]
+          }
+        });
       }
-
-      // Determine actual start and end coordinates, but override when needed:
-      let startLon = parseFloat(fromCoord.longitude);
-      let startLat = parseFloat(fromCoord.latitude);
-      let endLon = parseFloat(toCoord.longitude);
-      let endLat = parseFloat(toCoord.latitude);
-
-      // If this segment starts at the node that virtualFrom attaches to, replace start with nearest point
-      if (virtualFromNearest && fromNodeId === virtualFromNearest.attached_node) {
-        // We expect virtualFromEdge was unshifted earlier; we want the segment after virtualFrom to start from nearest point
-        startLon = parseFloat(virtualFromNearest.nearest_lon);
-        startLat = parseFloat(virtualFromNearest.nearest_lat);
-      }
-
-      // If this segment ends at the node that virtualTo attaches to, replace end with nearest point
-      if (virtualToNearest && toNodeId === virtualToNearest.attached_node) {
-        endLon = parseFloat(virtualToNearest.nearest_lon);
-        endLat = parseFloat(virtualToNearest.nearest_lat);
-      }
-
-      edgeSegments.push({
-        from_node: fromNodeId,
-        to_node: toNodeId,
-        distance: edgeData.distance,
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [startLon, startLat],
-            [endLon, endLat]
-          ]
-        }
-      });
     }
 
-    // Now add virtual edge at start & end (so order is correct)
+    
     if (virtualFromEdge) edgeSegments.unshift(virtualFromEdge);
     if (virtualToEdge) edgeSegments.push(virtualToEdge);
 
-    // Build geojson
+    
     const geoJson = {
       type: "FeatureCollection",
-      features: edgeSegments.map(segment => ({
+      features: edgeSegments.map(seg => ({
         type: "Feature",
         properties: {
-          from_node: segment.from_node,
-          to_node: segment.to_node,
-          distance: segment.distance
+          from_node: seg.from_node,
+          to_node: seg.to_node,
+          distance: seg.distance
         },
-        geometry: segment.geometry
+        geometry: seg.geometry
       }))
     };
 
@@ -254,19 +187,12 @@ const shortestPath = async (req, res) => {
       path_nodes: path,
       geojson: geoJson
     });
-
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-  
-  
-  
   
 
 module.exports = {snapToNearest, shortestPath};
