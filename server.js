@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const app = express();
 const PORT = 5000;
 const dotenv = require('dotenv');
@@ -8,13 +9,16 @@ const nodeRoutes = require('./src/routes/nodeRoute');
 const edgeRoutes = require('./src/routes/edgeRoute');
 const pathRoutes = require('./src/routes/pathRoute');
 const poiRoutes = require('./src/routes/poiRoute');
+const authRoutes = require("./src/routes/authRoutes");
 
+app.use(cors());
 app.use(express.json());
 
 app.use('/api/node', nodeRoutes);
 app.use('/api/edge', edgeRoutes);
 app.use('/api/path', pathRoutes);
 app.use('/api/poi', poiRoutes);
+app.use("/api/auth", authRoutes);
 
 
 const db = require('./src/config/db')
@@ -34,6 +38,12 @@ app.get('/', (req, res) => {
 });
 
 // running server
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
+app.listen(PORT, async () => {
+  try {
+    await db.raw("SELECT 1+1 AS result");
+    console.log("✅ Database connected successfully");
+  } catch (err) {
+    console.error("❌ Database connection failed:", err.message);
+  }
+  console.log(`Server running on port ${PORT}`);
 });
