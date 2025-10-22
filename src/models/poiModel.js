@@ -6,7 +6,7 @@ const insertPoi = async (poi) => {
 
 const getAllPoi = async () => {
     const poiData = await db('poi')
-      .select('poi_id', 'label', 'latitude', 'longitude', 'geom', 'site_id');
+      .select('poi_id', 'label', 'latitude', 'longitude', 'geom', 'site_id', 'floor');
     return poiData;
   };
 

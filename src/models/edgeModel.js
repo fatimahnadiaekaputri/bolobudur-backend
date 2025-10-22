@@ -78,4 +78,31 @@ async function getAllEdges() {
   return await db('edge').select('from_node', 'to_node', 'distance')
 }
 
-module.exports = { createEdge, getAllEdgesAsGeoJSON, getAllEdges };
+async function findNearestEdge (lat, lon, nodeId) {
+  const result = await db.raw(`
+    SELECT 
+      edge_id,
+      from_node,
+      to_node,
+      ST_X(ST_ClosestPoint(geom, ST_SetSRID(ST_MakePoint(?, ?), 4326))) AS nearest_lon,
+      ST_Y(ST_ClosestPoint(geom, ST_SetSRID(ST_MakePoint(?, ?), 4326))) AS nearest_lat,
+      ST_Distance(
+        geography(ST_MakePoint((SELECT longitude FROM node WHERE node_id = from_node),
+                               (SELECT latitude FROM node WHERE node_id = from_node))),
+        geography(ST_SetSRID(ST_MakePoint(?, ?), 4326))
+      ) AS dist_to_from,
+      ST_Distance(
+        geography(ST_MakePoint((SELECT longitude FROM node WHERE node_id = to_node),
+                               (SELECT latitude FROM node WHERE node_id = to_node))),
+        geography(ST_SetSRID(ST_MakePoint(?, ?), 4326))
+      ) AS dist_to_to
+    FROM edge
+    WHERE from_node = ? OR to_node = ?
+    ORDER BY geom <-> ST_SetSRID(ST_MakePoint(?, ?), 4326)
+    LIMIT 1
+  `, [lon, lat, lon, lat, lon, lat, lon, lat, nodeId, nodeId, lon, lat]);
+
+  return result.rows ? result.rows[0] : result[0];
+}
+
+module.exports = { createEdge, getAllEdgesAsGeoJSON, getAllEdges, findNearestEdge };
