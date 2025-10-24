@@ -10,6 +10,7 @@ const edgeRoutes = require('./src/routes/edgeRoute');
 const pathRoutes = require('./src/routes/pathRoute');
 const poiRoutes = require('./src/routes/poiRoute');
 const authRoutes = require("./src/routes/authRoutes");
+const borobudurpediaRoutes = require("./src/routes/borobudurpediaRoutes");
 
 app.use(cors());
 app.use(express.json());
@@ -19,6 +20,7 @@ app.use('/api/edge', edgeRoutes);
 app.use('/api/path', pathRoutes);
 app.use('/api/poi', poiRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/borobudurpedia", borobudurpediaRoutes);
 
 
 const db = require('./src/config/db')
