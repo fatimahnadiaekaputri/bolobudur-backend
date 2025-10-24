@@ -63,7 +63,6 @@ class BorobudurpediaService {
         return { categories, sites };
     }
 
-
 }
 
 module.exports = BorobudurpediaService;
