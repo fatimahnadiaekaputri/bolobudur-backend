@@ -26,170 +26,222 @@ const shortestPath = async (req, res) => {
       return res.status(400).json({ success: false, message: "Missing coordinates" });
     }
 
-    const fromNode = await nodeModel.findNearestNode(parseFloat(from_lat), parseFloat(from_lon));
-    const toNode = await nodeModel.findNearestNode(parseFloat(to_lat), parseFloat(to_lon));
+    const fLat = parseFloat(from_lat), fLon = parseFloat(from_lon);
+    const tLat = parseFloat(to_lat), tLon = parseFloat(to_lon);
 
-    // Validasi node
-    if (!fromNode || !toNode || fromNode.distance > 50 || toNode.distance > 50) {
+    // 1. Temukan "snap-to-edge" untuk TITIK AWAL dan TITIK AKHIR
+    const nearestEdgeFrom = await edgeModel.findNearestEdge(fLat, fLon);
+    const nearestEdgeTo = await edgeModel.findNearestEdge(tLat, tLon);
+
+    // Validasi snap
+    if (!nearestEdgeFrom || !nearestEdgeTo) {
       return res.status(404).json({
         success: false,
-        message: "No nearby node found — coordinates too far from network"
+        message: "No nearby edge found — coordinates too far from network"
       });
     }
 
-    const edges = await edgeModel.getAllEdges();
+    // (Opsional) Cek jika jarak snap terlalu jauh
+    // if (nearestEdgeFrom.distance_to_snap > 50 || nearestEdgeTo.distance_to_snap > 50) { ... }
 
-    // Bentuk graph dua arah
+    // 2. Build graph (Sama seperti sebelumnya)
+    const edges = await edgeModel.getAllEdges();
     const graph = {};
     edges.forEach(edge => {
-      if (!graph[edge.from_node]) graph[edge.from_node] = [];
-      if (!graph[edge.to_node]) graph[edge.to_node] = [];
-      graph[edge.from_node].push({ node: edge.to_node, weight: edge.distance });
-      graph[edge.to_node].push({ node: edge.from_node, weight: edge.distance });
+      const a = Number(edge.from_node);
+      const b = Number(edge.to_node);
+      if (!graph[a]) graph[a] = [];
+      if (!graph[b]) graph[b] = [];
+      graph[a].push({ node: b, weight: edge.distance });
+      graph[b].push({ node: a, weight: edge.distance });
     });
 
-    // virtual edge untuk titik awal ke nearest node
+    // 3. Siapkan ID Virtual
     const virtualFromId = -1000;
-    const nearestNodeFromCoord = await nodeModel.getCoordinateById([fromNode.node_id]);
-    const fromNodeLat = nearestNodeFromCoord[0].latitude;
-    const fromNodeLon = nearestNodeFromCoord[0].longitude;
-
-    graph[virtualFromId] = [{ node: fromNode.node_id, weight: fromNode.distance }];
-    if (!graph[fromNode.node_id]) graph[fromNode.node_id] = [];
-    graph[fromNode.node_id].push({ node: virtualFromId, weight: fromNode.distance });
-
-    const virtualFromEdge = {
-      from_node: virtualFromId,
-      to_node: fromNode.node_id,
-      distance: fromNode.distance,
-      geometry: {
-        type: "LineString",
-        coordinates: [
-          [parseFloat(from_lon), parseFloat(from_lat)],
-          [fromNodeLon, fromNodeLat]
-        ]
-      }
-    };
-
-    // virtual edge untuk ke nearest node titik tujuan
-    const { path: prePath } = dijkstra(graph, fromNode.node_id, toNode.node_id);
-    const coords = await nodeModel.getCoordinateById(prePath);
-    const lastNodeId = prePath[prePath.length - 1];
-
-    const nearestEdgeToPOI = await edgeModel.findNearestEdge(
-      parseFloat(to_lat),
-      parseFloat(to_lon),
-      lastNodeId
-    );
-
-    let virtualToEdge = null;
     const virtualToId = -9999;
 
-    if (nearestEdgeToPOI) {
-      const {
-        from_node,
-        to_node,
-        nearest_lon,
-        nearest_lat,
-        dist_to_from,
-        dist_to_to
-      } = nearestEdgeToPOI;
+    // 4. Hubungkan VIRTUAL FROM ke kedua ujung edge terdekatnya
+    graph[virtualFromId] = [
+      { node: nearestEdgeFrom.from_node, weight: nearestEdgeFrom.dist_to_from },
+      { node: nearestEdgeFrom.to_node, weight: nearestEdgeFrom.dist_to_to }
+    ];
+    if (!graph[nearestEdgeFrom.from_node]) graph[nearestEdgeFrom.from_node] = [];
+    if (!graph[nearestEdgeFrom.to_node]) graph[nearestEdgeFrom.to_node] = [];
+    graph[nearestEdgeFrom.from_node].push({ node: virtualFromId, weight: nearestEdgeFrom.dist_to_from });
+    graph[nearestEdgeFrom.to_node].push({ node: virtualFromId, weight: nearestEdgeFrom.dist_to_to });
 
-      graph[virtualToId] = [
-        { node: from_node, weight: dist_to_from },
-        { node: to_node, weight: dist_to_to }
-      ];
-      if (!graph[from_node]) graph[from_node] = [];
-      if (!graph[to_node]) graph[to_node] = [];
+    // Simpan geometri untuk GeoJSON nanti
+    const virtualFromEdge = [
+      { via: nearestEdgeFrom.from_node, distance: nearestEdgeFrom.dist_to_from, coord: [nearestEdgeFrom.nearest_lon, nearestEdgeFrom.nearest_lat] },
+      { via: nearestEdgeFrom.to_node, distance: nearestEdgeFrom.dist_to_to, coord: [nearestEdgeFrom.nearest_lon, nearestEdgeFrom.nearest_lat] }
+    ];
 
-      graph[from_node].push({ node: virtualToId, weight: dist_to_from });
-      graph[to_node].push({ node: virtualToId, weight: dist_to_to });
+    // 5. Hubungkan VIRTUAL TO ke kedua ujung edge terdekatnya
+    graph[virtualToId] = [
+      { node: nearestEdgeTo.from_node, weight: nearestEdgeTo.dist_to_from },
+      { node: nearestEdgeTo.to_node, weight: nearestEdgeTo.dist_to_to }
+    ];
+    if (!graph[nearestEdgeTo.from_node]) graph[nearestEdgeTo.from_node] = [];
+    if (!graph[nearestEdgeTo.to_node]) graph[nearestEdgeTo.to_node] = [];
+    graph[nearestEdgeTo.from_node].push({ node: virtualToId, weight: nearestEdgeTo.dist_to_from });
+    graph[nearestEdgeTo.to_node].push({ node: virtualToId, weight: nearestEdgeTo.dist_to_to });
+    
+    // Simpan geometri untuk GeoJSON nanti
+    const virtualToEdge = [
+      { via: nearestEdgeTo.from_node, distance: nearestEdgeTo.dist_to_from, coord: [nearestEdgeTo.nearest_lon, nearestEdgeTo.nearest_lat] },
+      { via: nearestEdgeTo.to_node, distance: nearestEdgeTo.dist_to_to, coord: [nearestEdgeTo.nearest_lon, nearestEdgeTo.nearest_lat] }
+    ];
 
-      virtualToEdge = {
-        from_node: lastNodeId,
-        to_node: virtualToId,
-        distance: Math.min(dist_to_from, dist_to_to),
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [
-              coords.find(c => c.node_id === lastNodeId).longitude,
-              coords.find(c => c.node_id === lastNodeId).latitude
-            ],
-            [nearest_lon, nearest_lat]
-          ]
-        }
-      };
-    }
-
-   
+    // 6. Jalankan Dijkstra HANYA SEKALI
     const { path, totalDistance } = dijkstra(graph, virtualFromId, virtualToId);
 
-    if (path.length < 2) {
+    if (!path || path.length < 2) {
       return res.status(404).json({ success: false, message: "No path found" });
     }
 
-    const fullCoords = await nodeModel.getCoordinateById(path);
+    // 7. Post-Processing & Bangun GeoJSON (Sekarang Simetris)
+    const nodeIdsToFetch = path.filter(n => n !== virtualFromId && n !== virtualToId);
+    const fullCoordsRaw = await nodeModel.getCoordinateById(nodeIdsToFetch);
+    const coordMap = new Map();
+    (fullCoordsRaw || []).forEach(c => coordMap.set(Number(c.node_id), { longitude: c.longitude, latitude: c.latitude }));
+    const findCoord = (id) => coordMap.get(Number(id)) || null;
+
     const edgeSegments = [];
 
     for (let i = 0; i < path.length - 1; i++) {
       const fromNodeId = path[i];
       const toNodeId = path[i + 1];
+
+      // virtualFrom -> real
+      if (fromNodeId === virtualFromId) {
+        const chosen = virtualFromEdge.find(v => Number(v.via) === Number(toNodeId));
+        if (chosen) {
+          edgeSegments.push({
+            from_node: virtualFromId, to_node: toNodeId,
+            distance: chosen.distance,
+            geometry: {
+              type: "LineString",
+              coordinates: [ [chosen.coord[0], chosen.coord[1]], findCoord(toNodeId) ? [findCoord(toNodeId).longitude, findCoord(toNodeId).latitude] : chosen.coord ]
+            }
+          });
+        }
+        continue;
+      }
+
+      // real -> virtualFrom (simetris)
+      if (toNodeId === virtualFromId) {
+        const chosen = virtualFromEdge.find(v => Number(v.via) === Number(fromNodeId));
+        if (chosen) {
+          edgeSegments.push({
+            from_node: fromNodeId, to_node: virtualFromId,
+            distance: chosen.distance,
+            geometry: {
+              type: "LineString",
+              coordinates: [ findCoord(fromNodeId) ? [findCoord(fromNodeId).longitude, findCoord(fromNodeId).latitude] : chosen.coord, [chosen.coord[0], chosen.coord[1]] ]
+            }
+          });
+        }
+        continue;
+      }
+
+      // real -> virtualTo
+      if (toNodeId === virtualToId) {
+        const chosen = virtualToEdge.find(v => Number(v.via) === Number(fromNodeId));
+        if (chosen) {
+          edgeSegments.push({
+            from_node: fromNodeId, to_node: virtualToId,
+            distance: chosen.distance,
+            geometry: {
+              type: "LineString",
+              coordinates: [ findCoord(fromNodeId) ? [findCoord(fromNodeId).longitude, findCoord(fromNodeId).latitude] : chosen.coord, [chosen.coord[0], chosen.coord[1]] ]
+            }
+          });
+        }
+        continue;
+      }
+      
+      // virtualTo -> real (simetris)
+      if (fromNodeId === virtualToId) {
+         const chosen = virtualToEdge.find(v => Number(v.via) === Number(toNodeId));
+         if (chosen) {
+           edgeSegments.push({
+             from_node: virtualToId, to_node: toNodeId,
+             distance: chosen.distance,
+             geometry: {
+               type: "LineString",
+               coordinates: [ [chosen.coord[0], chosen.coord[1]], findCoord(toNodeId) ? [findCoord(toNodeId).longitude, findCoord(toNodeId).latitude] : chosen.coord ]
+             }
+           });
+         }
+         continue;
+       }
+      
+      // normal real->real
+      const fc = findCoord(fromNodeId);
+      const tc = findCoord(toNodeId);
       const edgeData = edges.find(e =>
-        (e.from_node === fromNodeId && e.to_node === toNodeId) ||
-        (e.from_node === toNodeId && e.to_node === fromNodeId)
+        (Number(e.from_node) === Number(fromNodeId) && Number(e.to_node) === Number(toNodeId)) ||
+        (Number(e.from_node) === Number(toNodeId) && Number(e.to_node) === Number(fromNodeId))
       );
 
-      const fromCoord = fullCoords.find(c => c.node_id === fromNodeId);
-      const toCoord = fullCoords.find(c => c.node_id === toNodeId);
-
-      if (fromCoord && toCoord && edgeData) {
+      if (fc && tc && edgeData) {
         edgeSegments.push({
-          from_node: fromNodeId,
-          to_node: toNodeId,
+          from_node: fromNodeId, to_node: toNodeId,
           distance: edgeData.distance,
           geometry: {
             type: "LineString",
-            coordinates: [
-              [fromCoord.longitude, fromCoord.latitude],
-              [toCoord.longitude, toCoord.latitude]
-            ]
+            coordinates: [ [fc.longitude, fc.latitude], [tc.longitude, tc.latitude] ]
           }
         });
       }
-    }
+    } // end for loop
 
+    // 8. Mapping ID (Sama seperti sebelumnya, tapi lebih sederhana)
+    const exactFrom = await nodeModel.findNodeByExactCoord(fLat, fLon);
+    const exactTo = await nodeModel.findNodeByExactCoord(tLat, tLon);
     
-    if (virtualFromEdge) edgeSegments.unshift(virtualFromEdge);
-    if (virtualToEdge) edgeSegments.push(virtualToEdge);
+    const dbNodeIds = await nodeModel.getExistingNodeIds(nodeIdsToFetch);
+    const dbNodeSet = new Set(dbNodeIds.map(n => Number(n)));
 
-    
+    const mapNodeId = (id) => {
+      if (id === virtualFromId) {
+        // Gunakan from_node dari edge terdekat sebagai referensi
+        return exactFrom ? Number(exactFrom.node_id) : virtualFromId;
+      }
+      if (id === virtualToId) {
+        // Gunakan from_node dari edge terdekat sebagai referensi
+        return exactTo ? Number(exactTo.node_id) : virtualToId;
+      }
+      return dbNodeSet.has(Number(id)) ? Number(id) : id;
+    };
+
+    const resolvedPath = path.map(id => mapNodeId(id));
+
     const geoJson = {
       type: "FeatureCollection",
       features: edgeSegments.map(seg => ({
         type: "Feature",
         properties: {
-          from_node: seg.from_node,
-          to_node: seg.to_node,
+          from_node: mapNodeId(seg.from_node),
+          to_node: mapNodeId(seg.to_node),
           distance: seg.distance
         },
         geometry: seg.geometry
       }))
     };
 
-    res.json({
+    // totalDistance sudah termasuk jarak snap yang dihitung Dijkstra
+    return res.json({
       success: true,
       message: "Shortest path found",
-      total_distance:
-        totalDistance +
-        (virtualFromEdge ? virtualFromEdge.distance : 0) +
-        (virtualToEdge ? virtualToEdge.distance : 0),
-      path_nodes: path,
+      total_distance: totalDistance,
+      path_nodes: resolvedPath,
       geojson: geoJson
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
 
