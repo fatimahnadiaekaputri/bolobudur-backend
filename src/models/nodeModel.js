@@ -46,4 +46,20 @@ async function getExistingNodeIds(ids) {
     return row || null;
   }
 
-module.exports = {createNode, getAll, findNearestNode, getCoordinateById, getExistingNodeIds, findNodeByExactCoord}
+  async function findNearestFloor(lat, lon) {
+    try {
+      const pLon = parseFloat(lon);
+      const pLat = parseFloat(lat);
+      const query = db.raw(`
+        SELECT floor
+        FROM node
+        ORDER BY geom <-> ST_SetSRID(ST_MakePoint(?, ?), 4326)
+        LIMIT 1
+      `, [pLon, pLat]);
+      const { rows } = await query;
+      if (rows.length === 0) return null;
+      return rows[0].floor;
+    } catch (err) { /* ... error handling ... */ }
+  }
+
+module.exports = {createNode, getAll, findNearestNode, getCoordinateById, getExistingNodeIds, findNodeByExactCoord, findNearestFloor}

@@ -78,84 +78,77 @@ async function getAllEdges() {
   return await db('edge').select('from_node', 'to_node', 'distance')
 }
 
-async function findNearestEdge(lat, lon) {
+async function findNearestEdge(lat, lon, floor) {
   try {
-    // Pastikan parameter adalah angka
     const pLon = parseFloat(lon);
     const pLat = parseFloat(lat);
+    const pFloor = parseInt(floor, 10);
 
-    // Query ini mengasumsikan SRID 4326 (WGS 84)
+    // Kita tidak perlu cek isNaN(pFloor) lagi karena controller akan memastikannya
+    
     const query = db.raw(`
       WITH 
-      -- 1. Buat titik geografi dari input user
       InputPoint AS (
         SELECT ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography AS geog_point,
                ST_SetSRID(ST_MakePoint(?, ?), 4326) AS geom_point
       ),
-      -- 2. Temukan 1 edge terdekat (menggunakan operator <-> pada geometri)
       NearestEdge AS (
         SELECT 
           e.edge_id,
           e.from_node,
           e.to_node,
-          e.geom, -- Asumsi kolom geometri Anda bernama 'geom' dan tipenya 'geometry'
-          e.distance AS total_edge_distance -- Asumsi Anda punya kolom 'distance'
-        FROM edge e, InputPoint ip
+          e.geom,
+          e.distance AS total_edge_distance
+        FROM edge e
+        JOIN node n_from ON e.from_node = n_from.node_id
+        JOIN node n_to ON e.to_node = n_to.node_id
+        ,
+        InputPoint ip
+        WHERE 
+          n_from.floor = ? AND n_to.floor = ? -- <-- FILTER LANTAI
         ORDER BY e.geom <-> ip.geom_point
         LIMIT 1
       )
-      -- 3. Hitung jarak 'split' di sepanjang garis
+      -- LOGIKA SPLIT YANG BENAR --
       SELECT 
         ne.edge_id,
         ne.from_node,
         ne.to_node,
-        -- Titik terdekat di garis (titik snap)
         ST_X(ST_ClosestPoint(ne.geom, ip.geom_point)) AS nearest_lon,
         ST_Y(ST_ClosestPoint(ne.geom, ip.geom_point)) AS nearest_lat,
-        
-        -- Jarak dari titik snap ke 'from_node'
         ST_Length(
-          ST_LineSubstring(
-            ne.geom,
-            0, -- Mulai dari awal garis (fraksi 0)
-            ST_LineLocatePoint(ne.geom, ST_ClosestPoint(ne.geom, ip.geom_point)) -- Fraksi ke titik snap
-          )::geography
+          ST_LineSubstring(ne.geom, 0, ST_LineLocatePoint(ne.geom, ST_ClosestPoint(ne.geom, ip.geom_point)))::geography
         ) AS dist_to_from,
-        
-        -- Jarak dari titik snap ke 'to_node'
         ST_Length(
-          ST_LineSubstring(
-            ne.geom,
-            ST_LineLocatePoint(ne.geom, ST_ClosestPoint(ne.geom, ip.geom_point)), -- Mulai dari titik snap
-            1 -- Sampai akhir garis (fraksi 1)
-          )::geography
+          ST_LineSubstring(ne.geom, ST_LineLocatePoint(ne.geom, ST_ClosestPoint(ne.geom, ip.geom_point)), 1)::geography
         ) AS dist_to_to,
-
-        -- Jarak user ke titik snap
         ST_Distance(ip.geog_point, ST_ClosestPoint(ne.geom, ip.geom_point)::geography) AS distance_to_snap
-
       FROM NearestEdge ne, InputPoint ip
-    `, [pLon, pLat, pLon, pLat]);
+    `, [
+        pLon, pLat,         // Untuk InputPoint
+        pLon, pLat,         // Untuk InputPoint
+        pFloor, pFloor      // Untuk WHERE (filter lantai)
+    ]);
 
     const { rows } = await query;
     if (rows.length === 0) {
+      console.warn(`No edge found on floor ${pFloor} near ${pLat}, ${pLon}`);
       return null;
     }
     
-    // Kembalikan objek yang bersih
     return {
       edge_id: rows[0].edge_id,
       from_node: Number(rows[0].from_node),
       to_node: Number(rows[0].to_node),
       nearest_lon: rows[0].nearest_lon,
       nearest_lat: rows[0].nearest_lat,
-      dist_to_from: rows[0].dist_to_from, // Jarak split A
-      dist_to_to: rows[0].dist_to_to,     // Jarak split B
-      distance_to_snap: rows[0].distance_to_snap // Jarak user ke jalan
+      dist_to_from: rows[0].dist_to_from,
+      dist_to_to: rows[0].dist_to_to,
+      distance_to_snap: rows[0].distance_to_snap
     };
 
   } catch (err) {
-    console.error("Error in findNearestEdge:", err);
+    console.error("Error in findNearestEdge (floor-aware):", err);
     throw err;
   }
 }

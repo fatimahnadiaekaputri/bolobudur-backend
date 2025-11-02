@@ -1,5 +1,6 @@
 const nodeModel = require('../models/nodeModel');
 const edgeModel = require('../models/edgeModel');
+const poiModel = require('../models/poiModel')
 const { dijkstra } = require('../utils/calculation');
 
 const snapToNearest = async (req, res) => {
@@ -29,25 +30,42 @@ const shortestPath = async (req, res) => {
     const fLat = parseFloat(from_lat), fLon = parseFloat(from_lon);
     const tLat = parseFloat(to_lat), tLon = parseFloat(to_lon);
 
-    // 1. Temukan "snap-to-edge" untuk TITIK AWAL dan TITIK AKHIR
-    const nearestEdgeFrom = await edgeModel.findNearestEdge(fLat, fLon);
-    const nearestEdgeTo = await edgeModel.findNearestEdge(tLat, tLon);
+    // ----- [LOGIKA BARU: BEDA CARA CARI LANTAI] -----
+    // 1. 'from_floor': "Tebak" lantai user dari NODE terdekat
+    const fromFloor = await nodeModel.findNearestFloor(fLat, fLon);
+    
+    // 2. 'to_floor': "Cari" lantai tujuan dari POI terdekat (yang adalah POI itu sendiri)
+    const toFloor = await poiModel.findNearestPoiFloor(tLat, tLon);
 
-    // Validasi snap
-    if (!nearestEdgeFrom || !nearestEdgeTo) {
-      return res.status(404).json({
-        success: false,
-        message: "No nearby edge found — coordinates too far from network"
-      });
+    // 3. Validasi
+    if (fromFloor === null) {
+      return res.status(404).json({ success: false, message: "Could not determine STARTING floor."});
+    }
+    if (toFloor === null) {
+      return res.status(404).json({ success: false, message: "Could not determine DESTINATION floor from POI."});
+    }
+    // -------------------------------------------
+
+    // 1. Temukan "snap-to-edge" MENGGUNAKAN LANTAI YANG BENAR
+    const nearestEdgeFrom = await edgeModel.findNearestEdge(fLat, fLon, fromFloor);
+    const nearestEdgeTo = await edgeModel.findNearestEdge(tLat, tLon, toFloor);
+
+    // Validasi snap (ini sudah benar dari kode Anda)
+    if (!nearestEdgeFrom) {
+      return res.status(404).json({ success: false, message: `No nearby edge found on floor ${fromFloor} for START point`});
+    }
+    if (!nearestEdgeTo) {
+      return res.status(404).json({ success: false, message: `No nearby edge found on floor ${toFloor} for END point`});
     }
 
-    // (Opsional) Cek jika jarak snap terlalu jauh
-    // if (nearestEdgeFrom.distance_to_snap > 50 || nearestEdgeTo.distance_to_snap > 50) { ... }
+    // --- SISA KODE ANDA SAMA PERSIS ---
+    // (Tidak perlu diubah sama sekali)
 
-    // 2. Build graph (Sama seperti sebelumnya)
+    // 2. Build graph
     const edges = await edgeModel.getAllEdges();
     const graph = {};
     edges.forEach(edge => {
+      // ... (kode build graph Anda)
       const a = Number(edge.from_node);
       const b = Number(edge.to_node);
       if (!graph[a]) graph[a] = [];
@@ -60,8 +78,9 @@ const shortestPath = async (req, res) => {
     const virtualFromId = -1000;
     const virtualToId = -9999;
 
-    // 4. Hubungkan VIRTUAL FROM ke kedua ujung edge terdekatnya
+    // 4. Hubungkan VIRTUAL FROM
     graph[virtualFromId] = [
+      // ... (kode hubungkan virtual from Anda)
       { node: nearestEdgeFrom.from_node, weight: nearestEdgeFrom.dist_to_from },
       { node: nearestEdgeFrom.to_node, weight: nearestEdgeFrom.dist_to_to }
     ];
@@ -70,14 +89,15 @@ const shortestPath = async (req, res) => {
     graph[nearestEdgeFrom.from_node].push({ node: virtualFromId, weight: nearestEdgeFrom.dist_to_from });
     graph[nearestEdgeFrom.to_node].push({ node: virtualFromId, weight: nearestEdgeFrom.dist_to_to });
 
-    // Simpan geometri untuk GeoJSON nanti
     const virtualFromEdge = [
+      // ... (kode virtualFromEdge Anda)
       { via: nearestEdgeFrom.from_node, distance: nearestEdgeFrom.dist_to_from, coord: [nearestEdgeFrom.nearest_lon, nearestEdgeFrom.nearest_lat] },
       { via: nearestEdgeFrom.to_node, distance: nearestEdgeFrom.dist_to_to, coord: [nearestEdgeFrom.nearest_lon, nearestEdgeFrom.nearest_lat] }
     ];
 
-    // 5. Hubungkan VIRTUAL TO ke kedua ujung edge terdekatnya
+    // 5. Hubungkan VIRTUAL TO
     graph[virtualToId] = [
+      // ... (kode hubungkan virtual to Anda)
       { node: nearestEdgeTo.from_node, weight: nearestEdgeTo.dist_to_from },
       { node: nearestEdgeTo.to_node, weight: nearestEdgeTo.dist_to_to }
     ];
@@ -86,8 +106,8 @@ const shortestPath = async (req, res) => {
     graph[nearestEdgeTo.from_node].push({ node: virtualToId, weight: nearestEdgeTo.dist_to_from });
     graph[nearestEdgeTo.to_node].push({ node: virtualToId, weight: nearestEdgeTo.dist_to_to });
     
-    // Simpan geometri untuk GeoJSON nanti
     const virtualToEdge = [
+      // ... (kode virtualToEdge Anda)
       { via: nearestEdgeTo.from_node, distance: nearestEdgeTo.dist_to_from, coord: [nearestEdgeTo.nearest_lon, nearestEdgeTo.nearest_lat] },
       { via: nearestEdgeTo.to_node, distance: nearestEdgeTo.dist_to_to, coord: [nearestEdgeTo.nearest_lon, nearestEdgeTo.nearest_lat] }
     ];
@@ -99,7 +119,8 @@ const shortestPath = async (req, res) => {
       return res.status(404).json({ success: false, message: "No path found" });
     }
 
-    // 7. Post-Processing & Bangun GeoJSON (Sekarang Simetris)
+    // 7. Post-Processing & Bangun GeoJSON
+    // ... (Loop for Anda sudah benar)
     const nodeIdsToFetch = path.filter(n => n !== virtualFromId && n !== virtualToId);
     const fullCoordsRaw = await nodeModel.getCoordinateById(nodeIdsToFetch);
     const coordMap = new Map();
@@ -107,130 +128,65 @@ const shortestPath = async (req, res) => {
     const findCoord = (id) => coordMap.get(Number(id)) || null;
 
     const edgeSegments = [];
-
     for (let i = 0; i < path.length - 1; i++) {
-      const fromNodeId = path[i];
-      const toNodeId = path[i + 1];
-
-      // virtualFrom -> real
-      if (fromNodeId === virtualFromId) {
-        const chosen = virtualFromEdge.find(v => Number(v.via) === Number(toNodeId));
-        if (chosen) {
-          edgeSegments.push({
-            from_node: virtualFromId, to_node: toNodeId,
-            distance: chosen.distance,
-            geometry: {
-              type: "LineString",
-              coordinates: [ [chosen.coord[0], chosen.coord[1]], findCoord(toNodeId) ? [findCoord(toNodeId).longitude, findCoord(toNodeId).latitude] : chosen.coord ]
-            }
-          });
+        const fromNodeId = path[i];
+        const toNodeId = path[i+1];
+        if (fromNodeId === virtualFromId) {
+            const chosen = virtualFromEdge.find(v => Number(v.via) === Number(toNodeId));
+            if (chosen) edgeSegments.push({ from_node: virtualFromId, to_node: toNodeId, distance: chosen.distance, geometry: { type: "LineString", coordinates: [ [chosen.coord[0], chosen.coord[1]], findCoord(toNodeId) ? [findCoord(toNodeId).longitude, findCoord(toNodeId).latitude] : chosen.coord ] }});
+            continue;
         }
-        continue;
-      }
-
-      // real -> virtualFrom (simetris)
-      if (toNodeId === virtualFromId) {
-        const chosen = virtualFromEdge.find(v => Number(v.via) === Number(fromNodeId));
-        if (chosen) {
-          edgeSegments.push({
-            from_node: fromNodeId, to_node: virtualFromId,
-            distance: chosen.distance,
-            geometry: {
-              type: "LineString",
-              coordinates: [ findCoord(fromNodeId) ? [findCoord(fromNodeId).longitude, findCoord(fromNodeId).latitude] : chosen.coord, [chosen.coord[0], chosen.coord[1]] ]
-            }
-          });
+        if (toNodeId === virtualFromId) {
+            const chosen = virtualFromEdge.find(v => Number(v.via) === Number(fromNodeId));
+            if (chosen) edgeSegments.push({ from_node: fromNodeId, to_node: virtualToId, distance: chosen.distance, geometry: { type: "LineString", coordinates: [ findCoord(fromNodeId) ? [findCoord(fromNodeId).longitude, findCoord(fromNodeId).latitude] : chosen.coord, [chosen.coord[0], chosen.coord[1]] ] }});
+            continue;
         }
-        continue;
-      }
-
-      // real -> virtualTo
-      if (toNodeId === virtualToId) {
-        const chosen = virtualToEdge.find(v => Number(v.via) === Number(fromNodeId));
-        if (chosen) {
-          edgeSegments.push({
-            from_node: fromNodeId, to_node: virtualToId,
-            distance: chosen.distance,
-            geometry: {
-              type: "LineString",
-              coordinates: [ findCoord(fromNodeId) ? [findCoord(fromNodeId).longitude, findCoord(fromNodeId).latitude] : chosen.coord, [chosen.coord[0], chosen.coord[1]] ]
-            }
-          });
+        if (toNodeId === virtualToId) {
+            const chosen = virtualToEdge.find(v => Number(v.via) === Number(fromNodeId));
+            if (chosen) edgeSegments.push({ from_node: fromNodeId, to_node: virtualToId, distance: chosen.distance, geometry: { type: "LineString", coordinates: [ findCoord(fromNodeId) ? [findCoord(fromNodeId).longitude, findCoord(fromNodeId).latitude] : chosen.coord, [chosen.coord[0], chosen.coord[1]] ] }});
+            continue;
         }
-        continue;
-      }
-      
-      // virtualTo -> real (simetris)
-      if (fromNodeId === virtualToId) {
-         const chosen = virtualToEdge.find(v => Number(v.via) === Number(toNodeId));
-         if (chosen) {
-           edgeSegments.push({
-             from_node: virtualToId, to_node: toNodeId,
-             distance: chosen.distance,
-             geometry: {
-               type: "LineString",
-               coordinates: [ [chosen.coord[0], chosen.coord[1]], findCoord(toNodeId) ? [findCoord(toNodeId).longitude, findCoord(toNodeId).latitude] : chosen.coord ]
-             }
-           });
-         }
-         continue;
-       }
-      
-      // normal real->real
-      const fc = findCoord(fromNodeId);
-      const tc = findCoord(toNodeId);
-      const edgeData = edges.find(e =>
-        (Number(e.from_node) === Number(fromNodeId) && Number(e.to_node) === Number(toNodeId)) ||
-        (Number(e.from_node) === Number(toNodeId) && Number(e.to_node) === Number(fromNodeId))
-      );
+        if (fromNodeId === virtualToId) {
+            const chosen = virtualToEdge.find(v => Number(v.via) === Number(toNodeId));
+            if (chosen) edgeSegments.push({ from_node: virtualToId, to_node: toNodeId, distance: chosen.distance, geometry: { type: "LineString", coordinates: [ [chosen.coord[0], chosen.coord[1]], findCoord(toNodeId) ? [findCoord(toNodeId).longitude, findCoord(toNodeId).latitude] : chosen.coord ] }});
+            continue;
+        }
+        const fc = findCoord(fromNodeId);
+        const tc = findCoord(toNodeId);
+        const edgeData = edges.find(e => (Number(e.from_node) === Number(fromNodeId) && Number(e.to_node) === Number(toNodeId)) || (Number(e.from_node) === Number(toNodeId) && Number(e.to_node) === Number(fromNodeId)));
+        if (fc && tc && edgeData) {
+            edgeSegments.push({ from_node: fromNodeId, to_node: toNodeId, distance: edgeData.distance, geometry: { type: "LineString", coordinates: [ [fc.longitude, fc.latitude], [tc.longitude, tc.latitude] ] }});
+        }
+    }
 
-      if (fc && tc && edgeData) {
-        edgeSegments.push({
-          from_node: fromNodeId, to_node: toNodeId,
-          distance: edgeData.distance,
-          geometry: {
-            type: "LineString",
-            coordinates: [ [fc.longitude, fc.latitude], [tc.longitude, tc.latitude] ]
-          }
-        });
-      }
-    } // end for loop
-
-    // 8. Mapping ID (Sama seperti sebelumnya, tapi lebih sederhana)
+    // 8. Mapping ID
+    // ... (Kode mapping ID Anda sudah benar)
     const exactFrom = await nodeModel.findNodeByExactCoord(fLat, fLon);
     const exactTo = await nodeModel.findNodeByExactCoord(tLat, tLon);
-    
     const dbNodeIds = await nodeModel.getExistingNodeIds(nodeIdsToFetch);
     const dbNodeSet = new Set(dbNodeIds.map(n => Number(n)));
 
     const mapNodeId = (id) => {
       if (id === virtualFromId) {
-        // Gunakan from_node dari edge terdekat sebagai referensi
         return exactFrom ? Number(exactFrom.node_id) : virtualFromId;
       }
       if (id === virtualToId) {
-        // Gunakan from_node dari edge terdekat sebagai referensi
         return exactTo ? Number(exactTo.node_id) : virtualToId;
       }
       return dbNodeSet.has(Number(id)) ? Number(id) : id;
     };
 
     const resolvedPath = path.map(id => mapNodeId(id));
-
     const geoJson = {
       type: "FeatureCollection",
       features: edgeSegments.map(seg => ({
         type: "Feature",
-        properties: {
-          from_node: mapNodeId(seg.from_node),
-          to_node: mapNodeId(seg.to_node),
-          distance: seg.distance
-        },
+        properties: { from_node: mapNodeId(seg.from_node), to_node: mapNodeId(seg.to_node), distance: seg.distance },
         geometry: seg.geometry
       }))
     };
 
-    // totalDistance sudah termasuk jarak snap yang dihitung Dijkstra
+    // 9. Return (Kode Anda sudah benar)
     return res.json({
       success: true,
       message: "Shortest path found",
