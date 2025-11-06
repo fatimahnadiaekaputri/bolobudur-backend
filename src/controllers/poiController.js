@@ -12,7 +12,7 @@ function getPoiType(label) {
 
   const createPoi = async (req, res) => {
     try {
-      const { label, geom, site_id, floor, radius, area } = req.body;
+      const { label, geom, site_id, floor, radius, area, zone_name } = req.body;
   
       if (!label) {
         return res.status(400).json({ message: "label is required" });
@@ -34,7 +34,8 @@ function getPoiType(label) {
         site_id: site_id || null,
         floor: floor || null,
         radius: radius || null, // default null kalau tidak ada radius
-        area: null              // diisi nanti kalau polygon
+        area: null,              // diisi nanti kalau polygon
+        zone_name: zone_name || null
       };
   
       // Kalau dikirim area polygon (GeoJSON)
@@ -93,15 +94,17 @@ const getAllPois = async (req, res) => {
   const getNearbyPois = async (req, res) => {
     try {
       const { lat, lon } = req.query;
+  
       if (!lat || !lon) {
         return res.status(400).json({ message: "lat and lon are required" });
       }
   
-      const { floor_detected, pois } = await poiModel.getNearbyPois(lat, lon);
+      const { floor_detected, zones } = await poiModel.getNearbyPois(lat, lon);
   
-      const geojson = {
-        type: "FeatureCollection",
-        features: pois.map(poi => ({
+      // Bentuk GeoJSON per zona
+      const geojsonZones = zones.map(zone => ({
+        zone_name: zone.zone_name,
+        features: zone.pois.map(poi => ({
           type: "Feature",
           geometry: {
             type: "Point",
@@ -112,27 +115,28 @@ const getAllPois = async (req, res) => {
             floor: poi.floor,
             radius: poi.radius,
             distance_m: poi.distance_m,
-            site: poi.site_id
+            cultural_site: poi.cultural_site
               ? {
-                  id: poi.site_id,
-                  name: poi.site_name,
-                  description: poi.site_description,
-                  image_url: poi.site_image,
+                  name: poi.cultural_site.name,
+                  description: poi.cultural_site.description,
+                  image_url: poi.cultural_site.image_url,
                 }
               : null,
           },
         })),
-      };
+      }));
   
+      // Response akhir
       res.status(200).json({
         floor_detected,
-        data: geojson,
+        detected_areas: geojsonZones,
       });
   
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Error fetching nearby POIs", error });
+      console.error("Error fetching nearby POIs:", error);
+      res.status(500).json({ message: "Error fetching nearby POIs", error: error.message });
     }
   };
+  
 
 module.exports = {createPoi, getAllPois, getNearbyPois};

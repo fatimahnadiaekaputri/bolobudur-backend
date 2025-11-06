@@ -42,9 +42,9 @@ const getAllPoi = async () => {
   const getNearbyPois = async (lat, lon) => {
     const pLon = parseFloat(lon);
     const pLat = parseFloat(lat);
-
+  
     try {
-      //  lantai terdekat berdasarkan edge
+      // 1️⃣ Deteksi lantai terdekat
       const floorQuery = await db.raw(`
         WITH 
         input_point AS (
@@ -64,24 +64,28 @@ const getAllPoi = async () => {
           FROM edge e
           JOIN node n_from ON e.from_node = n_from.node_id
           JOIN node n_to ON e.to_node = n_to.node_id
-          WHERE n_from.floor = n_to.floor -- Hindari edge vertikal
+          WHERE n_from.floor = n_to.floor
           ORDER BY e.geom <-> (SELECT geom_point FROM input_point)
           LIMIT 1
         )
         SELECT floor_detected AS floor, dist_m FROM nearest_edge;
       `, [pLon, pLat, pLon, pLat]);
-
-      const floorRows = floorQuery.rows;
-      if (floorRows.length === 0) {
-        return { floor_detected: null, pois: [] };
+  
+      if (floorQuery.rows.length === 0) {
+        return { floor_detected: null, zones: [] };
       }
-
-      const detectedFloor = floorRows[0].floor;
-
-      //  POI di lantai itu
+  
+      const detectedFloor = floorQuery.rows[0].floor;
+  
+      // 2️⃣ Ambil POI di lantai tsb
       const poiQuery = await db.raw(`
         SELECT 
-          poi.*, 
+          poi.zone_name,
+          poi.label,
+          poi.latitude,
+          poi.longitude,
+          poi.radius,
+          poi.floor,
           cs.name AS site_name,
           cs.description AS site_description,
           cs.image_url AS site_image,
@@ -103,20 +107,47 @@ const getAllPoi = async () => {
               ST_SetSRID(ST_MakePoint(?, ?), 4326)
             ))
           )
-        ORDER BY distance_m ASC
+        ORDER BY poi.zone_name, distance_m ASC;
       `, [pLon, pLat, detectedFloor, pLon, pLat, pLon, pLat]);
-
+  
       const pois = poiQuery.rows;
-
+  
+      // 3️⃣ Kelompokkan berdasarkan zone_name
+      const groupedZones = pois.reduce((acc, poi) => {
+        const zone = poi.zone_name || 'Unknown Zone';
+        if (!acc[zone]) acc[zone] = [];
+        acc[zone].push({
+          label: poi.label,
+          latitude: poi.latitude,
+          longitude: poi.longitude,
+          radius: poi.radius,
+          floor: poi.floor,
+          distance_m: poi.distance_m,
+          cultural_site: {
+            name: poi.site_name,
+            description: poi.site_description,
+            image_url: poi.site_image
+          }
+        });
+        return acc;
+      }, {});
+  
+      // 4️⃣ Ubah ke format array yang rapi
+      const zones = Object.entries(groupedZones).map(([zone_name, pois]) => ({
+        zone_name,
+        pois
+      }));
+  
       return {
         floor_detected: detectedFloor,
-        pois
+        zones
       };
-
+  
     } catch (err) {
-      console.error("Error in getNearbyPois (floor-aware):", err);
+      console.error("Error in getNearbyPois (grouped):", err);
       throw new Error("Failed to fetch nearby POIs");
     }
-}
+  };
+  
 
 module.exports = { insertPoi, getAllPoi, findNearestPoiFloor, getNearbyPois };
