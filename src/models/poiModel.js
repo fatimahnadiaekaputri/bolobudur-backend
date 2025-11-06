@@ -148,6 +148,23 @@ const getAllPoi = async () => {
       throw new Error("Failed to fetch nearby POIs");
     }
   };
+
+  const searchPoiByLabel = async (keyword) => {
+    const result = await db.raw(`
+      SELECT 
+        poi.label,
+        poi.longitude,
+        poi.latitude,
+        poi.site_id,
+        poi.floor,
+        cs.name AS site_name
+      FROM poi
+      LEFT JOIN cultural_site cs ON poi.site_id = cs.site_id
+      WHERE poi.label ILIKE ?
+    `, [`%${keyword}%`]);
+  
+    return result.rows;
+  };
   
 
-module.exports = { insertPoi, getAllPoi, findNearestPoiFloor, getNearbyPois };
+module.exports = { insertPoi, getAllPoi, findNearestPoiFloor, getNearbyPois, searchPoiByLabel };

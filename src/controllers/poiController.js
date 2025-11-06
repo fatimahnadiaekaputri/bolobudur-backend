@@ -138,5 +138,38 @@ const getAllPois = async (req, res) => {
     }
   };
   
+  const searchPoi = async (req, res) => {
+    try {
+      const { keyword } = req.query;
+      if (!keyword) {
+        return res.status(400).json({ message: "keyword is required" });
+      }
+  
+      const pois = await poiModel.searchPoiByLabel(keyword);
+  
+      const geojson = {
+        type: "FeatureCollection",
+        features: pois.map(poi => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [poi.longitude, poi.latitude],
+          },
+          properties: {
+            label: poi.label,
+            poi: keyword, // kata kunci pencarian
+            site_id: poi.site_id,
+            lokasi: `Lantai ${poi.floor || 'Tidak diketahui'}`
+          }
+        }))
+      };
+  
+      res.status(200).json(geojson);
+  
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Error searching POI", error });
+    }
+  };
 
-module.exports = {createPoi, getAllPois, getNearbyPois};
+module.exports = {createPoi, getAllPois, getNearbyPois, searchPoi};
