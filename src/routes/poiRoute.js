@@ -5,6 +5,7 @@ const verifyApiKey = require('../middleware/verifyApiKey');
 
 router.post('/', verifyApiKey, poiController.createPoi);
 router.get('/', poiController.getAllPois);
+router.get('/nearby', poiController.getNearbyPois);
 
 module.exports = router;
 

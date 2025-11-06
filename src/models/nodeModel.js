@@ -59,7 +59,15 @@ async function getExistingNodeIds(ids) {
       const { rows } = await query;
       if (rows.length === 0) return null;
       return rows[0].floor;
-    } catch (err) { /* ... error handling ... */ }
+    } catch (err) { 
+      console.error("[nodeModel.findNearestFloor] error:", {
+        lat,
+        lon,
+        message: err.message,
+        stack: err.stack,
+      });
+      throw err;
+    } 
   }
 
 module.exports = {createNode, getAll, findNearestNode, getCoordinateById, getExistingNodeIds, findNodeByExactCoord, findNearestFloor}
