@@ -80,6 +80,7 @@ const getAllPoi = async () => {
       // 2️⃣ Ambil POI di lantai tsb
       const poiQuery = await db.raw(`
         SELECT 
+          poi.poi_id, -- ✅ tambahkan ini
           poi.zone_name,
           poi.label,
           poi.latitude,
@@ -109,6 +110,7 @@ const getAllPoi = async () => {
           )
         ORDER BY poi.zone_name, distance_m ASC;
       `, [pLon, pLat, detectedFloor, pLon, pLat, pLon, pLat]);
+      
   
       const pois = poiQuery.rows;
   
@@ -117,6 +119,7 @@ const getAllPoi = async () => {
         const zone = poi.zone_name || 'Unknown Zone';
         if (!acc[zone]) acc[zone] = [];
         acc[zone].push({
+          poi_id: poi.poi_id,
           label: poi.label,
           latitude: poi.latitude,
           longitude: poi.longitude,

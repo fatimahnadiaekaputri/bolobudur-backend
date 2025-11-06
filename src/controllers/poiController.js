@@ -105,6 +105,7 @@ const getAllPois = async (req, res) => {
       const geojsonZones = zones.map(zone => ({
         zone_name: zone.zone_name,
         features: zone.pois.map(poi => ({
+          id: poi.poi_id,
           type: "Feature",
           geometry: {
             type: "Point",
