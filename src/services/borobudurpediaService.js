@@ -16,7 +16,7 @@ class BorobudurpediaService {
   static async getCulturalSitesByCategory(categoryId) {
     return await db("cultural_site")
       .where({ category_id: categoryId })
-      .select("site_id", "name", "image_url")
+      .select("site_id", "name", "description", "image_url")
       .orderBy("name", "asc");
   }
 
