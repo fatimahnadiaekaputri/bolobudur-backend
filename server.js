@@ -11,6 +11,7 @@ const pathRoutes = require('./src/routes/pathRoute');
 const poiRoutes = require('./src/routes/poiRoute');
 const authRoutes = require("./src/routes/authRoutes");
 const borobudurpediaRoutes = require("./src/routes/borobudurpediaRoutes");
+const searchRoutes = require('./src/routes/searchRoute')
 
 app.use(cors());
 app.use(express.json());
@@ -21,6 +22,7 @@ app.use('/api/path', pathRoutes);
 app.use('/api/poi', poiRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/borobudurpedia", borobudurpediaRoutes);
+app.use('/api/search', searchRoutes)
 
 
 const db = require('./src/config/db')

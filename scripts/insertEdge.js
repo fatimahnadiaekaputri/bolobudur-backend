@@ -5,8 +5,8 @@ const API_URL = "http://localhost:5000/api/edge";
 const API_KEY = process.env.API_KEY
 
 async function insertEdges() {
-  const start = 1; //example start node_id
-  const end = 2; // example end node_id
+  const start = 1249; //example start node_id
+  const end = 1252; // example end node_id
 
   for (let i = start; i <= end; i++) {
     const from_node = i;
@@ -14,7 +14,8 @@ async function insertEdges() {
 
     const data = {
       from_node,
-      to_node
+      to_node,
+      type: "road"
     };
 
     try {
@@ -37,19 +38,19 @@ async function insertEdges() {
 
 async function insertStairEdges() {
   const stairEdges = [
-    { from_node: 1031, to_node: 1071, height: 3.4 }, // lantai 1 ke lantai 2 utara
-    { from_node: 1071, to_node: 1111, height: 3.4 }, // lantai 2 ke lantai 3 
-    { from_node: 1111, to_node: 1139, height: 3.4 }, // lantai 3 ke lantai 4 
-    { from_node: 1139, to_node: 1163, height: 3.4 }, // lantai 4 ke lantai 5 
-    { from_node: 1163, to_node: 1196, height: 3.4 }, // lantai 5 ke lantai 6 
-    { from_node: 1196, to_node: 1226, height: 3.4 } // lantai 6 ke lantai 7 
+    { from_node: 1233, to_node: 1240, height: 0 }, // lantai 1 ke lantai 2 utara
+    { from_node: 1238, to_node: 1244, height: 0 }, // lantai 2 ke lantai 3 
+    // { from_node: 1111, to_node: 1139, height: 3.4 }, // lantai 3 ke lantai 4 
+    // { from_node: 1139, to_node: 1163, height: 3.4 }, // lantai 4 ke lantai 5 
+    // { from_node: 1163, to_node: 1196, height: 3.4 }, // lantai 5 ke lantai 6 
+    // { from_node: 1196, to_node: 1226, height: 3.4 } // lantai 6 ke lantai 7 
   ];
 
   for (const edge of stairEdges) {
     const data = {
       from_node: edge.from_node,
       to_node: edge.to_node,
-      type: "stair",
+      type: "road",
       height: edge.height
     };
 
@@ -71,6 +72,6 @@ async function insertStairEdges() {
 }
 
 
-// insertEdges();
+insertEdges();
 
-insertStairEdges();
+// insertStairEdges();

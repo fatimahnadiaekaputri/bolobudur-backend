@@ -21,42 +21,53 @@ function diagonalDistance(baseDistance, height) {
 }
 
 function dijkstra(graph, start, end) {
+  // ensure node ids treated as numbers
+  const nodes = new Set(Object.keys(graph).map(k => Number(k)));
   const distances = {};
   const previous = {};
-  const nodes = new Set(Object.keys(graph).map(Number));
 
-  for (let node of nodes) distances[node] = Infinity;
+  for (let n of nodes) distances[n] = Infinity;
+  if (!nodes.has(start)) {
+    // if start isn't in graph, nothing to do
+    return { path: [], totalDistance: Infinity };
+  }
   distances[start] = 0;
 
-  while (nodes.size) {
-    let smallest = [...nodes].reduce((a, b) =>
-      distances[a] < distances[b] ? a : b
-    );
-    nodes.delete(smallest);
+  const Q = new Set(nodes);
+  while (Q.size) {
+    let smallest = null;
+    for (let n of Q) {
+      if (smallest === null || distances[n] < distances[smallest]) smallest = n;
+    }
+
+    if (smallest === null) break;
+
+    Q.delete(smallest);
 
     if (smallest === end) {
       const path = [];
       let temp = end;
-      while (previous[temp]) {
+      while (temp !== undefined && temp !== start) {
         path.push(temp);
         temp = previous[temp];
       }
-      path.push(start);
-      return {path: path.reverse(), totalDistance: distances[end]};
+      if (temp === start) path.push(start);
+      return { path: path.reverse(), totalDistance: distances[end] };
     }
 
     if (!graph[smallest]) continue;
 
     for (let neighbor of graph[smallest]) {
-      let alt = distances[smallest] + neighbor.weight;
-      if (alt < distances[neighbor.node]) {
-        distances[neighbor.node] = alt;
-        previous[neighbor.node] = smallest;
+      const nb = Number(neighbor.node);
+      const alt = distances[smallest] + neighbor.weight;
+      if (alt < (distances[nb] ?? Infinity)) {
+        distances[nb] = alt;
+        previous[nb] = smallest;
       }
     }
   }
 
-  return {path: [], totalDistance: Infinity};
+  return { path: [], totalDistance: Infinity };
 }
 
 module.exports = { haversineDistance, diagonalDistance, dijkstra };

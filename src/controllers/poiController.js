@@ -10,37 +10,51 @@ function getPoiType(label) {
     return 'pintu';
   }
 
-const createPoi = async (req, res) => {
+  const createPoi = async (req, res) => {
     try {
-        const {label, geom, site_id, floor} = req.body;
-
-        if (!label) {
-            return res.status(400).json({message: "label is required"})
-        };
-
-        if (!geom || !geom.type || !geom.coordinates) {
-            return res.status(400).json({message: 'Invalid GeoJSON format'});
-        }
-
-        const poiData = {
-            label,
-            latitude: geom.coordinates[1],
-            longitude: geom.coordinates[0],
-            geom: db.raw(`ST_GeomFromText(?, 4326)`, [
-                `POINT(${geom.coordinates[0]} ${geom.coordinates[1]})`,
-            ]),
-            site_id: null || site_id,
-            floor: null || floor
-        };
-
-        const [newPoi] = await poiModel.insertPoi(poiData);
-
-        res.status(201).json(newPoi);
+      const { label, geom, site_id, floor, radius, area, zone_name } = req.body;
+  
+      if (!label) {
+        return res.status(400).json({ message: "label is required" });
+      }
+  
+      // Validasi geom wajib ada untuk menentukan lokasi
+      if (!geom || !geom.type || !geom.coordinates) {
+        return res.status(400).json({ message: "Invalid GeoJSON format" });
+      }
+  
+      // Data dasar untuk semua POI
+      const poiData = {
+        label,
+        latitude: geom.coordinates[1],
+        longitude: geom.coordinates[0],
+        geom: db.raw(`ST_GeomFromText(?, 4326)`, [
+          `POINT(${geom.coordinates[0]} ${geom.coordinates[1]})`,
+        ]),
+        site_id: site_id || null,
+        floor: floor || null,
+        radius: radius || null, // default null kalau tidak ada radius
+        area: null,              // diisi nanti kalau polygon
+        zone_name: zone_name || null
+      };
+  
+      // Kalau dikirim area polygon (GeoJSON)
+      if (area && area.type === "Polygon" && Array.isArray(area.coordinates)) {
+        poiData.area = db.raw(`ST_GeomFromGeoJSON(?)`, [JSON.stringify(area)]);
+      }
+  
+      // Simpan ke database
+      const [newPoi] = await poiModel.insertPoi(poiData);
+  
+      res.status(201).json({
+        message: "POI created successfully",
+        data: newPoi,
+      });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({message: "Error creating poi data"})
+      console.error(error);
+      res.status(500).json({ message: "Error creating poi data" });
     }
-};
+};  
 
 const getAllPois = async (req, res) => {
     try {
@@ -77,4 +91,86 @@ const getAllPois = async (req, res) => {
     }
   };
 
-module.exports = {createPoi, getAllPois};
+  const getNearbyPois = async (req, res) => {
+    try {
+      const { lat, lon } = req.query;
+  
+      if (!lat || !lon) {
+        return res.status(400).json({ message: "lat and lon are required" });
+      }
+  
+      const { floor_detected, zones } = await poiModel.getNearbyPois(lat, lon);
+  
+      // Bentuk GeoJSON per zona
+      const geojsonZones = zones.map(zone => ({
+        zone_name: zone.zone_name,
+        features: zone.pois.map(poi => ({
+          id: poi.poi_id,
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [poi.longitude, poi.latitude],
+          },
+          properties: {
+            label: poi.label,
+            floor: poi.floor,
+            radius: poi.radius,
+            distance_m: poi.distance_m,
+            cultural_site: poi.cultural_site
+              ? {
+                  name: poi.cultural_site.name,
+                  description: poi.cultural_site.description,
+                  image_url: poi.cultural_site.image_url,
+                }
+              : null,
+          },
+        })),
+      }));
+  
+      // Response akhir
+      res.status(200).json({
+        floor_detected,
+        detected_areas: geojsonZones,
+      });
+  
+    } catch (error) {
+      console.error("Error fetching nearby POIs:", error);
+      res.status(500).json({ message: "Error fetching nearby POIs", error: error.message });
+    }
+  };
+  
+  const searchPoi = async (req, res) => {
+    try {
+      const { keyword } = req.query;
+      if (!keyword) {
+        return res.status(400).json({ message: "keyword is required" });
+      }
+  
+      const pois = await poiModel.searchPoiByLabel(keyword);
+  
+      const geojson = {
+        type: "FeatureCollection",
+        features: pois.map(poi => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [poi.longitude, poi.latitude],
+          },
+          properties: {
+            label: poi.label,
+            poi: keyword, // kata kunci pencarian
+            site_id: poi.site_id,
+            lokasi: `Lantai ${poi.floor || 'Tidak diketahui'}`
+          }
+        }))
+      };
+  
+      res.status(200).json(geojson);
+  
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Error searching POI", error });
+    }
+  };
+
+module.exports = {createPoi, getAllPois, getNearbyPois, searchPoi};
