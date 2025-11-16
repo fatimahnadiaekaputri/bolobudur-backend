@@ -68,6 +68,28 @@ const AuthController = {
       });
     }
   },
+
+  changePassword: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { oldPassword, newPassword } = req.body;
+
+      if (!oldPassword || !newPassword) {
+        return res.status(400).json({ message: "Both fields are required" });
+      }
+
+      const result = await AuthService.changePassword(
+        userId,
+        oldPassword,
+        newPassword
+      );
+
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  },
+
 };
 
 module.exports = AuthController;

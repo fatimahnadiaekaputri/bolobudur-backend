@@ -54,6 +54,36 @@ class AuthService {
     return user;
   }
 
+  // CHANGE PASSWORD
+  static async changePassword(userId, oldPassword, newPassword) {
+    const user = await db("user").where({ uuid: userId }).first();
+    if (!user) throw new Error("User not found");
+
+    // 1. Cek password lama
+    const valid = bcrypt.compareSync(oldPassword, user.hash_password);
+    if (!valid) throw new Error("Old password is incorrect");
+
+    // 2. Hash password baru
+    const newHash = bcrypt.hashSync(newPassword, 8);
+
+    // 3. Update database
+    await db("user")
+      .where({ uuid: userId })
+      .update({
+        hash_password: newHash,
+        updated_at: db.fn.now()
+      });
+
+    // 4. Opsional tapi sangat aman → revoke semua token lama
+    await db("token").where({ user_id: userId }).update({
+      revoked: true,
+      updated_at: db.fn.now()
+    });
+
+    return { message: "Password updated successfully" };
+  }
+
+
   // LOGOUT
   static async logout(token) {
     await db("token").where({ token }).update({
