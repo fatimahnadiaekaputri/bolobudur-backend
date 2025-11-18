@@ -90,6 +90,27 @@ const AuthController = {
     }
   },
 
+  updateProfile: async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const userId = req.user.id;
+
+    // Jika ada file image (multipart)
+    const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
+    const result = await AuthService.updateProfile(userId, name, email, imageUrl);
+
+    res.json({
+      message: "Profile updated successfully",
+      image: imageUrl
+    });
+
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+},
+
+
 };
 
 module.exports = AuthController;

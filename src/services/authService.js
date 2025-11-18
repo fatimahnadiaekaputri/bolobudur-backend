@@ -54,6 +54,19 @@ class AuthService {
     return user;
   }
 
+  static async updateProfile(userId, name, email, imageUrl) {
+  const updateData = {};
+
+  if (name) updateData.name = name;
+  if (email) updateData.email = email;
+  if (imageUrl) updateData.image_url = imageUrl;
+
+  await db("user").where({ uuid: userId }).update(updateData);
+
+  return { message: "Profile updated" };
+}
+
+
   // CHANGE PASSWORD
   static async changePassword(userId, oldPassword, newPassword) {
     const user = await db("user").where({ uuid: userId }).first();
