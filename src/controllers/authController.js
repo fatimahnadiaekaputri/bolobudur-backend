@@ -25,9 +25,9 @@ const AuthController = {
   profile: async (req, res) => {
     try {
       const result = await AuthService.getProfile(req.user.id);
-      res.json(result);
+      res.json({ status: true, data: result });
     } catch (err) {
-      res.status(404).json({ message: err.message });
+      res.status(404).json({ status: false, message: err.message });
     }
   },
 
@@ -90,27 +90,31 @@ const AuthController = {
     }
   },
 
-  updateProfile: async (req, res) => {
-  try {
-    const { name, email } = req.body;
-    const userId = req.user.id;
+ updateProfile: async (req, res) => {
+    try {
+      const { name, email } = req.body;
+      const userId = req.user.id; // Didapat dari verifyTokenMiddleware
 
-    // Jika ada file image (multipart)
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      // Cek apakah ada file yang diupload multer
+      const imageFilename = req.file ? req.file.filename : null;
 
-    const result = await AuthService.updateProfile(userId, name, email, imageUrl);
+      const result = await AuthService.updateProfile(userId, name, email, imageFilename);
 
-    res.json({
-      message: "Profile updated successfully",
-      image: imageUrl
-    });
+      res.json({
+        status: true,
+        message: "Profile updated successfully",
+        data: result
+      });
 
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-},
-
-
+    } catch (err) {
+      // Hapus file yang baru terupload jika update DB gagal agar tidak nyampah
+      if (req.file) {
+          const fs = require('fs');
+          fs.unlink(req.file.path, () => {});
+      }
+      res.status(400).json({ status: false, message: err.message });
+    }
+  },
 };
 
 module.exports = AuthController;

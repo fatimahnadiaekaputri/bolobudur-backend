@@ -10,11 +10,10 @@ router.get("/profile", verifyTokenMiddleware, AuthController.profile);
 router.post("/logout", verifyTokenMiddleware, AuthController.logout);
 router.post("/validate", AuthController.validateToken);
 router.put("/change-password", verifyTokenMiddleware, AuthController.changePassword);
-router.put("/profile", verifyTokenMiddleware, AuthController.updateProfile);
 router.put(
-  "/profile",
-  verifyTokenMiddleware,
-  upload.single("image"),
+  "/profile", 
+  verifyTokenMiddleware, 
+  upload.single('image'), // Pastikan di Postman key-nya adalah 'image'
   AuthController.updateProfile
 );
 

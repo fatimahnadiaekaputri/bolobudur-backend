@@ -2,6 +2,8 @@ const bcrypt = require("bcryptjs");
 const db = require("../config/db");
 const { generateToken } = require("../utils/jwtUtils");
 const dayjs = require("dayjs");
+const path = require('path');
+const fs = require('fs');
 
 class AuthService {
   // REGISTER
@@ -47,24 +49,59 @@ class AuthService {
   // GET PROFILE
   static async getProfile(userId) {
     const user = await db("user")
-      .select("uuid", "name", "email", "created_at")
+      .select("uuid", "name", "email", "image_profile", "created_at") // Pastikan kolom image_url sesuai DB
       .where({ uuid: userId })
       .first();
+    
     if (!user) throw new Error("User not found");
+    
+    // Format URL gambar jika ada
+    user.imageUrl = user.image_profile 
+        ? `/uploads/profile/${user.image_profile}` 
+        : null;
+    
     return user;
   }
 
-  static async updateProfile(userId, name, email, imageUrl) {
-  const updateData = {};
+  static async updateProfile(userId, name, email, newImageFilename) {
+    // 1. Ambil data user lama untuk cek gambar lama
+    const currentUser = await db("user").where({ uuid: userId }).first();
+    if (!currentUser) throw new Error("User not found");
 
-  if (name) updateData.name = name;
-  if (email) updateData.email = email;
-  if (imageUrl) updateData.image_url = imageUrl;
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (email) updateData.email = email;
 
-  await db("user").where({ uuid: userId }).update(updateData);
+    // 2. Logika Ganti Gambar
+    if (newImageFilename) {
+        // Hapus gambar lama fisik jika ada dan bukan default
+        const oldImage = currentUser.image_profile;
+        if (currentUser.image_url) {
+            const oldImagePath = path.join(__dirname, '../uploads/profile/', oldImage);
+            if (fs.existsSync(oldImagePath)) {
+                try {
+                    fs.unlinkSync(oldImagePath);
+                } catch (err) {
+                    console.error("Gagal hapus gambar lama:", err);
+                }
+            }
+        }
+        // Set nama file baru ke DB
+        updateData.image_profile = newImageFilename; // Simpan nama filenya saja
+    }
 
-  return { message: "Profile updated" };
-}
+    // 3. Update DB
+    await db("user").where({ uuid: userId }).update(updateData);
+
+    const finalImageName = newImageFilename || currentUser.image_profile;
+    
+    // 4. Kembalikan data terbaru
+    return { 
+        ...currentUser, 
+        ...updateData, 
+        imageUrl: finalImageName ? `/uploads/profile/${finalImageName}` : null
+    };
+  }
 
 
   // CHANGE PASSWORD
