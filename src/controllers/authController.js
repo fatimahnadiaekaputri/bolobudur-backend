@@ -90,31 +90,6 @@ const AuthController = {
     }
   },
 
- updateProfile: async (req, res) => {
-    try {
-      const { name, email } = req.body;
-      const userId = req.user.id; // Didapat dari verifyTokenMiddleware
-
-      // Cek apakah ada file yang diupload multer
-      const imageFilename = req.file ? req.file.filename : null;
-
-      const result = await AuthService.updateProfile(userId, name, email, imageFilename);
-
-      res.json({
-        status: true,
-        message: "Profile updated successfully",
-        data: result
-      });
-
-    } catch (err) {
-      // Hapus file yang baru terupload jika update DB gagal agar tidak nyampah
-      if (req.file) {
-          const fs = require('fs');
-          fs.unlink(req.file.path, () => {});
-      }
-      res.status(400).json({ status: false, message: err.message });
-    }
-  },
 };
 
 module.exports = AuthController;

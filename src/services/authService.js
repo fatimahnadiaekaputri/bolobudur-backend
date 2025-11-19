@@ -63,47 +63,6 @@ class AuthService {
     return user;
   }
 
-  static async updateProfile(userId, name, email, newImageFilename) {
-    // 1. Ambil data user lama untuk cek gambar lama
-    const currentUser = await db("user").where({ uuid: userId }).first();
-    if (!currentUser) throw new Error("User not found");
-
-    const updateData = {};
-    if (name) updateData.name = name;
-    if (email) updateData.email = email;
-
-    // 2. Logika Ganti Gambar
-    if (newImageFilename) {
-        // Hapus gambar lama fisik jika ada dan bukan default
-        const oldImage = currentUser.image_profile;
-        if (currentUser.image_url) {
-            const oldImagePath = path.join(__dirname, '../uploads/profile/', oldImage);
-            if (fs.existsSync(oldImagePath)) {
-                try {
-                    fs.unlinkSync(oldImagePath);
-                } catch (err) {
-                    console.error("Gagal hapus gambar lama:", err);
-                }
-            }
-        }
-        // Set nama file baru ke DB
-        updateData.image_profile = newImageFilename; // Simpan nama filenya saja
-    }
-
-    // 3. Update DB
-    await db("user").where({ uuid: userId }).update(updateData);
-
-    const finalImageName = newImageFilename || currentUser.image_profile;
-    
-    // 4. Kembalikan data terbaru
-    return { 
-        ...currentUser, 
-        ...updateData, 
-        imageUrl: finalImageName ? `/uploads/profile/${finalImageName}` : null
-    };
-  }
-
-
   // CHANGE PASSWORD
   static async changePassword(userId, oldPassword, newPassword) {
     const user = await db("user").where({ uuid: userId }).first();
