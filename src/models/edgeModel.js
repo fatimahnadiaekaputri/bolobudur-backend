@@ -75,7 +75,7 @@ async function getAllEdgesAsGeoJSON() {
 }
 
 async function getAllEdges() {
-  return await db('edge').select('from_node', 'to_node', 'distance')
+  return await db('edge').select('from_node', 'to_node', 'distance', 'type')
 }
 
 async function findNearestEdge(lat, lon, floor) {

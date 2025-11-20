@@ -65,14 +65,24 @@ const shortestPath = async (req, res) => {
     const edges = await edgeModel.getAllEdges();
     const graph = {};
     edges.forEach(edge => {
-      // ... (kode build graph Anda)
       const a = Number(edge.from_node);
       const b = Number(edge.to_node);
+    
       if (!graph[a]) graph[a] = [];
       if (!graph[b]) graph[b] = [];
-      graph[a].push({ node: b, weight: edge.distance });
-      graph[b].push({ node: a, weight: edge.distance });
+    
+
+      let factor = 1;
+      if (edge.type === 'stair') factor = 5;          // tangga = lebih berat
+      else factor = 1;                                // road / default
+    
+      const weightedDistance = edge.distance * factor;
+      // -------------------------------------------------------------
+    
+      graph[a].push({ node: b, weight: weightedDistance }); 
+      graph[b].push({ node: a, weight: weightedDistance }); 
     });
+    
 
     // 3. Siapkan ID Virtual
     const virtualFromId = -1000;
