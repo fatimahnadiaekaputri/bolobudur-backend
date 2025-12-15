@@ -30,7 +30,7 @@ class AuthService {
     if (!valid) throw new Error("Invalid password");
 
     // Generate JWT
-    const token = generateToken({ id: user.uuid, email: user.email });
+    const token = generateToken({ uuid: user.uuid, email: user.email });
 
     // Hitung expiry
     const expiresAt = dayjs().add(30, "day").toISOString();
@@ -49,18 +49,61 @@ class AuthService {
   // GET PROFILE
   static async getProfile(userId) {
     const user = await db("user")
-      .select("uuid", "name", "email", "image_profile", "created_at") // Pastikan kolom image_url sesuai DB
+      .select("uuid", "name", "email", "image_profile", "created_at") 
       .where({ uuid: userId })
       .first();
     
     if (!user) throw new Error("User not found");
     
-    // Format URL gambar jika ada
-    user.imageUrl = user.image_profile 
-        ? `/uploads/profile/${user.image_profile}` 
-        : null;
+    // // Format URL gambar jika ada
+    // user.imageUrl = user.image_profile 
+    //     ? `/uploads/profile/${user.image_profile}` 
+    //     : null;
     
     return user;
+  }
+
+  // update profile
+  static async updateProfile(userId, data) {
+    try {
+      const [user] = await db("user")
+        .where({uuid: userId})
+        .update(data)
+        .returning([
+          "uuid",
+          "name",
+          "email",
+          "image_profile",
+          "updated_at",
+        ]);
+
+        if (!user) {
+          throw new Error("User not found");
+        }
+        
+
+      return user;
+    } catch (err) {
+      // PostgreSQL UNIQUE constraint
+      if (err.code === "23505") {
+        throw new AppError("Email already used", 409);
+      }
+      throw err;
+    }
+  }
+  
+
+  //find user by Id
+  static async getUserById(userId) {
+    return db("user").where({ uuid: userId }).first();
+  }
+  
+
+  // find user by Email
+  static async getUserEmail(email) {
+    return db("user")
+      .where({email})
+      .first();
   }
 
   // CHANGE PASSWORD
