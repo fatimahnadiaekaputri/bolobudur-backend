@@ -196,11 +196,16 @@ const shortestPath = async (req, res) => {
       }))
     };
 
+    let realDistance = 0;
+        edgeSegments.forEach(seg => {
+        realDistance += seg.distance;
+    });
+
     // 9. Return (Kode Anda sudah benar)
     return res.json({
       success: true,
       message: "Shortest path found",
-      total_distance: totalDistance,
+      total_distance: realDistance,
       path_nodes: resolvedPath,
       geojson: geoJson
     });
